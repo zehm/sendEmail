@@ -1,0 +1,65 @@
+6a3dc641c1c4b21cc128e0d90d0983e47218e290 Fix SSL version and add preferences file with default settings
+diff --git a/sendEmail.pl b/sendEmail.pl
+index 9f9392e..c0f1b1d 100755
+--- a/sendEmail.pl
++++ b/sendEmail.pl
+@@ -96,6 +96,8 @@ my %opt = (
+     "password"             => '',                                  ## Password used in SMTP Auth
+     "tls"                  => 'auto',                              ## Enable or disable TLS support.  Options: auto, yes, no
+     
++    "ssl_version"          => 'SSLv3 TLSv12',                      ## SSL_version for IO::Socket::SSL->start_SSL
++    "configFile"           => '/etc/defaults/sendemail',           ## Config file with default arguments
+ );
+ 
+ ## More variables used later in the program
+@@ -210,6 +212,33 @@ sub processCommandLine {
+     my $numargv = @ARGS;
+     help() unless ($numargv);
+     my $counter = 0;
++
++    if ($ARGS[0] =~ /^-c$/i) {
++        $opt{'configFile'} = $ARGS[1];
++        splice(@ARGS, 0, 2);
++        $numargv = @ARGS;
++    }
++    if (-e $opt{'configFile'}) {
++        open (CONFIGFILE, $opt{'configFile'}) || do {
++            printmsg("ERROR => Opening config file [$opt{'configFile'}] failed with the error: $!", 0);
++            die;  ## It's a critical error
++        };
++        my @DEFAULTS;
++        while (my $line = <CONFIGFILE>) {
++            $line =~ s/^\s+//;
++            $line =~ s/\s+$//;
++            $line =~ s/\s*#.*//;
++            if ($line =~ /["']/) {
++                printmsg("ERROR => Quotes in config [$line] is not supported!", 0);
++                die;  ## It's a critical error
++            }
++            my @parts = split(/\s+/, $line);
++            push(@DEFAULTS, @parts) if @parts;
++        }
++        close(CONFIGFILE);
++        splice(@ARGS, 0, 0, @DEFAULTS) if @DEFAULTS;
++        $numargv = @ARGS;
++    }
+     
+     for ($counter = 0; $counter < $numargv; $counter++) {
+   
+@@ -1295,6 +1324,7 @@ Synopsis:  $conf{'programName'} -f ADDRESS [options]
+     -s SERVER[:PORT]          smtp mail relay, default is $conf{'server'}:$conf{'port'}
+ 
+   ${colorGreen}Optional:${colorNormal}
++    -c   CONFIG_FILE          a preferences file with default settings (must be first!)
+     -a   FILE [FILE ...]      file attachment(s)
+     -cc  ADDRESS [ADDR ...]   cc  email address(es)
+     -bcc ADDRESS [ADDR ...]   bcc email address(es)
+@@ -1903,7 +1933,7 @@ else {
+     if ($conf{'tls_server'} == 1 and $conf{'tls_client'} == 1 and $opt{'tls'} =~ /^(yes|auto)$/) {
+         printmsg("DEBUG => Starting TLS", 2);
+         if (SMTPchat('STARTTLS')) { quit($conf{'error'}, 1); }
+-        if (! IO::Socket::SSL->start_SSL($SERVER, SSL_version => 'SSLv3 TLSv1')) {
++        if (! IO::Socket::SSL->start_SSL($SERVER, SSL_version => $opt{'ssl_version'})) {
+             quit("ERROR => TLS setup failed: " . IO::Socket::SSL::errstr(), 1);
+         }
+         printmsg("DEBUG => TLS: Using cipher: ". $SERVER->get_cipher(), 3);
